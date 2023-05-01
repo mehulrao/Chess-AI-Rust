@@ -1,5 +1,3 @@
-use std::str::FromStr;
-
 use chess::{Board, Color, BoardStatus};
 mod searcher;
 use crate::searcher::Searcher;
@@ -13,7 +11,7 @@ fn main() {
     const TIME: u64 = 5000;
 
     //let board = Board::default();
-    let board = Board::from_fen("rnbqkbnr/ppp2ppp/8/1B1pp3/3PP3/8/PPP2PPP/RNBQK1NR b KQkq - 0 1".to_owned()).expect("Valid FEN");
+    let mut board = Board::default();
 
     if board.status() == BoardStatus::Checkmate {
         println!("Mate!");
@@ -21,6 +19,9 @@ fn main() {
     }
 
     let mut searcher: Searcher = Searcher::new(board, true, 67108864);
-    searcher.do_iterative_deepening_search(1);
-    //println!("{}", searcher.get_board());
+    searcher.do_iterative_deepening_search(10);
+    println!("{:?}", searcher.get_best_move().unwrap());
+    board = board.make_move_new(searcher.get_best_move().unwrap());
+    println!("--------------------------------");
+    println!("{}", board);
 }

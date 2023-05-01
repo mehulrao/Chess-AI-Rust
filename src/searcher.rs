@@ -1,10 +1,11 @@
-use crate::{entry::Entry, evaluation::Evaluation};
-use super::move_ordering::MoveOrdering;
+use crate::{entry::Entry, evaluation::evaluate};
+use chess::BitBoard;
 use chess::Board;
 use chess::BoardStatus;
 use chess::ChessMove;
 use chess::CacheTable;
 use chess::MoveGen;
+use chess::Color;
 
 const IMMEDIATE_MATE_SCORE: i32 = 100000;
 const POS_INF: i32 = 9999999;
@@ -36,7 +37,6 @@ pub struct Searcher {
     best_eval: i32,
     best_move_this_iter: Option<ChessMove>,
     best_eval_this_iter: i32,
-    move_ordering: MoveOrdering,
 }
 
 impl Searcher {
@@ -56,7 +56,6 @@ impl Searcher {
             best_eval: 0,
             best_move_this_iter: None,
             best_eval_this_iter: 0,
-            move_ordering: MoveOrdering::new(self.tt),
         }
     }
 
@@ -77,7 +76,7 @@ impl Searcher {
         if tt_eval.is_some() {
             self.num_tt += 1;
             if ply_from_root == 0 {
-                self.best_move_this_iter = self.get_stored_move(board_hash);
+                self.best_move_this_iter = get_stored_move(&self.tt, board_hash);
                 self.best_eval_this_iter = tt_eval.unwrap();
             }
             return tt_eval.unwrap()
@@ -86,8 +85,7 @@ impl Searcher {
             if self.use_second_search {
                 return self.search_captures(alpha, beta)
             } else {
-                let eval = Evaluation::new(self.board);
-                return eval.evaluate(); 
+                return evaluate(&self.board);
             }
         }
         let mut move_list = MoveGen::new_legal(&self.board);
@@ -110,8 +108,7 @@ impl Searcher {
             self.board = board_backup;
             self.num_nodes += 1;
             if evaluation >= beta {
-                let entry: Entry = Entry::new(self.correct_score_to_store(evaluation, ply_from_root), this_move, depth, EvalType::LowerBound);
-                self.tt.add(self.board.get_hash(), entry);
+                self.store_eval(self.board.get_hash(), depth, ply_from_root, evaluation, eval_type, this_move);
                 return beta;
             }
             if evaluation > alpha {
@@ -124,6 +121,7 @@ impl Searcher {
                 }
             }
         }
+        self.store_eval(self.board.get_hash(), depth, ply_from_root, alpha, eval_type, best_move_this_pos.unwrap_or_default());
         return alpha
     }
 
@@ -205,25 +203,40 @@ impl Searcher {
         0
     }
 
-    fn get_stored_move(&self, hash: u64) -> Option<ChessMove> {
-        let tt_eval = self.tt.get(hash);
-        if tt_eval.is_some() {
-            let tt_ = tt_eval.unwrap();
-            return Some(tt_.move_)
-        }
-        None
-    }
-
-    fn search_captures(&self, alpha: i32, beta: i32) -> i32 {
-        let eval = Evaluation::new(self.board);
-        let evaluation = eval.evaluate();
+    fn search_captures(&mut self, alpha: i32, beta: i32) -> i32 {
+        let evaluation = evaluate(&self.board);
         self.num_pos += 1;
         if evaluation >= beta {
-            return beta
+            return beta;
         }
+        if evaluation > alpha {
+            let alpha = evaluation;
+        }
+        let mut move_list = MoveGen::new_legal(&self.board);
+        let mask: BitBoard;
+        match self.board.side_to_move() {
+            Color::White => {
+                mask = *self.board.color_combined(chess::Color::Black);
+            }
+            Color::Black => {
+                mask = *self.board.color_combined(chess::Color::White);
+            }
+        }
+        move_list.set_iterator_mask(mask);
+        0
     }
-    fn store_eval(&self, hash: u64, depth: u8, ply_from_root: i32, eval: i32, eval_type: EvalType, this_move: ChessMove) {
+
+    fn store_eval(&mut self, hash: u64, depth: u8, ply_from_root: i32, eval: i32, eval_type: EvalType, this_move: ChessMove) {
         let entry: Entry = Entry::new(self.correct_score_to_store(eval, ply_from_root), this_move, depth, EvalType::LowerBound);
-        self.tt.add(self.board.get_hash(), entry);
+        self.tt.add(hash, entry);
     }
+}
+
+pub fn get_stored_move(tt: &CacheTable<Entry>, hash: u64) -> Option<ChessMove> {
+    let tt_eval = tt.get(hash);
+    if tt_eval.is_some() {
+        let tt_ = tt_eval.unwrap();
+        return Some(tt_.move_)
+    }
+    None
 }

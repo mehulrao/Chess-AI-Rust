@@ -71,55 +71,42 @@ const QUEEN_VALUE: u32 = 900;
 
 const ENDGAME_MATERIAL_START: u32 = ROOK_VALUE * 2 + BISHOP_VALUE + KNIGHT_VALUE;
 
-pub struct Evaluation {
-    board: Board,
+pub fn evaluate(board: &Board) -> i32 {
+    let mut perspective = 0;
+    let mut white_eval = count_material(Color::White, board);
+    let mut black_eval = count_material(Color::Black, board);
+    match board.side_to_move() {
+        Color::White => perspective = 0,
+        Color::Black => perspective = 1,
+    }
+    if get_checkers(Color::White, board){
+        black_eval -= 25;
+    }
+    if get_checkers(Color::Black, board) {
+        white_eval -= 25;
+    }
+    let eval = (white_eval - black_eval) * perspective;
+    eval
 }
 
-impl Evaluation {
-    pub fn new(board: Board) -> Evaluation {
-        let mut eval = Evaluation {
-            board,
-        };
-        eval
-    }
-    pub fn evaluate(&self) -> i32 {
-        let mut perspective = 0;
-        let mut white_eval = self.count_material(Color::White);
-        let mut black_eval = self.count_material(Color::Black);
-        match self.board.side_to_move() {
-            Color::White => perspective = 0,
-            Color::Black => perspective = 1,
-        }
-        if self.get_num_checkers(Color::White){ 
-            println!("removing black eval due to check");
-            black_eval -= 25;
-        }
-        if self.get_num_checkers(Color::Black) {
-            println!("removing white eval due to check");
-            white_eval -= 25;
-        }
-        let eval = (white_eval - black_eval) * perspective;
-        eval
-    }
+fn count_material(color: Color, board: &Board) -> i32 {
+    let mut material = 0;
+    let pieces = board.color_combined(color);
+    material += board.pieces(Piece::Pawn).bitand(pieces).popcnt() * PAWN_VALUE;
+    material += board.pieces(Piece::Knight).bitand(pieces).popcnt() * KNIGHT_VALUE;
+    material += board.pieces(Piece::Bishop).bitand(pieces).popcnt() * BISHOP_VALUE;
+    material += board.pieces(Piece::Rook).bitand(pieces).popcnt() * ROOK_VALUE;
+    material += board.pieces(Piece::Queen).bitand(pieces).popcnt() * QUEEN_VALUE;
+    material as i32
+}
 
-    fn count_material(&self, color: Color) -> i32 {
-        let mut material = 0;
-        let pieces = self.board.color_combined(color);
-        material += self.board.pieces(Piece::Pawn).bitand(pieces).popcnt() * PAWN_VALUE;
-        material += self.board.pieces(Piece::Knight).bitand(pieces).popcnt() * KNIGHT_VALUE;
-        material += self.board.pieces(Piece::Bishop).bitand(pieces).popcnt() * BISHOP_VALUE;
-        material += self.board.pieces(Piece::Rook).bitand(pieces).popcnt() * ROOK_VALUE;
-        material += self.board.pieces(Piece::Queen).bitand(pieces).popcnt() * QUEEN_VALUE;
-        material as i32
-    }
-    
-    fn get_num_checkers(&self, color: Color) -> bool {
-        let checkers = self.board.checkers();
-        let pieces = self.board.color_combined(color);
-        if checkers.bitand(pieces).popcnt() > 0 {
-            true
-        } else {
-            false
-        }
+fn get_checkers(color: Color, board: &Board) -> bool {
+    let checkers = board.checkers();
+    let pieces = board.color_combined(color);
+    if checkers.bitand(pieces).popcnt() > 0 {
+        true
+    } else {
+        false
     }
 }
+
