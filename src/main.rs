@@ -1,4 +1,4 @@
-use chess::{Board, Color, BoardStatus};
+use chess::{Board, Color, BoardStatus, Game};
 mod searcher;
 use crate::searcher::Searcher;
 mod entry;
@@ -11,17 +11,18 @@ fn main() {
     const TIME: u64 = 5000;
 
     //let board = Board::default();
-    let mut board = Board::default();
+    let mut game = Game::new();
 
-    if board.status() == BoardStatus::Checkmate {
+    if !game.result().is_none() {
         println!("Mate!");
         return;
     }
 
-    let mut searcher: Searcher = Searcher::new(board, true, 67108864);
-    searcher.do_iterative_deepening_search(10);
-    println!("{:?}", searcher.get_best_move().unwrap());
-    board = board.make_move_new(searcher.get_best_move().unwrap());
+    let mut searcher: Searcher = Searcher::new(game.current_position(), true, 67108864);
+    searcher.do_iterative_deepening_search(7);
+    println!("Best Move: {:?}", searcher.get_best_move().unwrap());
+    println!("Best Eval: {}", searcher.get_best_eval());
+    game.make_move(searcher.get_best_move().unwrap());
     println!("--------------------------------");
-    println!("{}", board);
+    println!("{}", game.current_position());
 }

@@ -102,8 +102,7 @@ impl Searcher {
 
         for this_move in move_list {
             let board_backup = self.board.clone();
-            let new_board = self.board.make_move_new(this_move);
-            self.board = new_board;
+            self.board = self.board.make_move_new(this_move);
             let evaluation = -self.search_moves(depth - 1, ply_from_root + 1, -beta, -alpha);
             self.board = board_backup;
             self.num_nodes += 1;
@@ -167,8 +166,13 @@ impl Searcher {
     pub fn get_board(&self) -> Board {
         self.board
     }
+
     fn is_mate_score(&self, score: i32) -> bool {
         score.abs() > IMMEDIATE_MATE_SCORE - MAX_MATE_DEPTH
+    }
+
+    pub fn get_best_eval(&self) -> i32 {
+        self.best_eval
     }
 
     fn lookup_evaluation(&self, hash: u64, depth: u8, ply_from_root: i32, alpha: i32, beta: i32) -> Option<i32> {
@@ -203,14 +207,14 @@ impl Searcher {
         0
     }
 
-    fn search_captures(&mut self, alpha: i32, beta: i32) -> i32 {
+    fn search_captures(&mut self, mut alpha: i32, beta: i32) -> i32 {
         let evaluation = evaluate(&self.board);
         self.num_pos += 1;
         if evaluation >= beta {
             return beta;
         }
         if evaluation > alpha {
-            let alpha = evaluation;
+            alpha = evaluation;
         }
         let mut move_list = MoveGen::new_legal(&self.board);
         let mask: BitBoard;
@@ -223,7 +227,21 @@ impl Searcher {
             }
         }
         move_list.set_iterator_mask(mask);
-        0
+        for _move in move_list {
+            let board_backup = self.board;
+            self.board = self.board.make_move_new(_move);
+            let evaluation = -self.search_captures(-beta, -alpha);
+            self.board = board_backup;
+            self.num_safe_pos += 1;
+            if evaluation >= beta {
+                self.num_prunes += 1;
+                return beta;
+            }
+            if evaluation > alpha {
+                alpha = evaluation;
+            }
+        }
+        alpha
     }
 
     fn store_eval(&mut self, hash: u64, depth: u8, ply_from_root: i32, eval: i32, eval_type: EvalType, this_move: ChessMove) {

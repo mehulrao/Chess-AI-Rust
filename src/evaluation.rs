@@ -1,8 +1,8 @@
 use std::ops::BitAnd;
 
-use chess::{Board, Color, Piece};
+use chess::{Board, Color, Piece, Square, ALL_SQUARES};
 
-const PAWNS: [i8; 64] = [
+const PAWNS: [i32; 64] = [
                         0,  0,  0,  0,  0,  0,  0,  0,
                         50, 50, 50, 50, 50, 50, 50, 50,
                         10, 10, 20, 30, 30, 20, 10, 10,
@@ -12,7 +12,7 @@ const PAWNS: [i8; 64] = [
                         5, 10, 10,-20,-20, 10, 10,  5,
                         0,  0,  0,  0,  0,  0,  0,  0];
 
-const KNIGHTS: [i8; 64] = [
+const KNIGHTS: [i32; 64] = [
                         -50,-40,-30,-30,-30,-30,-40,-50,
                         -40,-20,  0,  0,  0,  0,-20,-40,
                         -30,  0, 10, 15, 15, 10,  0,-30,
@@ -22,7 +22,7 @@ const KNIGHTS: [i8; 64] = [
                         -40,-20,  0,  5,  5,  0,-20,-40,
                         -50,-40,-30,-30,-30,-30,-40,-50];
 
-const BISHOPS: [i8; 64] = [
+const BISHOPS: [i32; 64] = [
                         -20,-10,-10,-10,-10,-10,-10,-20,
                         -10,  0,  0,  0,  0,  0,  0,-10,
                         -10,  0,  5, 10, 10,  5,  0,-10,
@@ -32,7 +32,7 @@ const BISHOPS: [i8; 64] = [
                         -10,  5,  0,  0,  0,  0,  5,-10,
                         -20,-10,-10,-10,-10,-10,-10,-20];
 
-const ROOKS: [i8; 64] = [
+const ROOKS: [i32; 64] = [
                         0,  0,  0,  0,  0,  0,  0,  0,
                         5, 10, 10, 10, 10, 10, 10,  5,
                         -5,  0,  0,  0,  0,  0,  0, -5,
@@ -42,7 +42,7 @@ const ROOKS: [i8; 64] = [
                         -5,  0,  0,  0,  0,  0,  0, -5,
                         0,  0,  0,  5,  5,  0,  0,  0];
 
-const QUEENS: [i8; 64] = [
+const QUEENS: [i32; 64] = [
                         -20,-10,-10, -5, -5,-10,-10,-20,
                         -10,  0,  0,  0,  0,  0,  0,-10,
                         -10,  0,  5,  5,  5,  5,  0,-10,
@@ -52,7 +52,7 @@ const QUEENS: [i8; 64] = [
                         -10,  0,  5,  0,  0,  0,  0,-10,
                         -20,-10,-10, -5, -5,-10,-10,-20];
 
-const KING_MIDDLE: [i8; 64] = [
+const KING_MIDDLE: [i32; 64] = [
                             -30,-40,-40,-50,-50,-40,-40,-30,
                             -30,-40,-40,-50,-50,-40,-40,-30,
                             -30,-40,-40,-50,-50,-40,-40,-30,
@@ -72,12 +72,14 @@ const QUEEN_VALUE: u32 = 900;
 const ENDGAME_MATERIAL_START: u32 = ROOK_VALUE * 2 + BISHOP_VALUE + KNIGHT_VALUE;
 
 pub fn evaluate(board: &Board) -> i32 {
-    let mut perspective = 0;
+    let perspective;
     let mut white_eval = count_material(Color::White, board);
+    white_eval += evaluate_tables(Color::White, board);
     let mut black_eval = count_material(Color::Black, board);
+    black_eval += evaluate_tables(Color::Black, board);
     match board.side_to_move() {
-        Color::White => perspective = 0,
-        Color::Black => perspective = 1,
+        Color::White => perspective = 1,
+        Color::Black => perspective = -1,
     }
     if get_checkers(Color::White, board){
         black_eval -= 25;
@@ -108,5 +110,37 @@ fn get_checkers(color: Color, board: &Board) -> bool {
     } else {
         false
     }
+}
+
+fn evaluate_tables(color: Color, board: &Board) -> i32 {
+    let mut score = 0;
+    for sq in ALL_SQUARES.iter() {
+        if board.piece_on(*sq).is_some() && board.color_on(*sq).unwrap() == color {
+            let index = if color == Color::Black {sq.to_index()} else {63 - sq.to_index()};
+            match board.piece_on(*sq).unwrap() {
+                Piece::Pawn => {
+                    score += PAWNS[index];
+                },
+                Piece::Knight => {
+                    score += KNIGHTS[index];
+                },
+                Piece::Bishop => {
+                    score += BISHOPS[index];
+                },
+                Piece::Rook => {
+                    score += ROOKS[index];
+                },
+                Piece::Queen => {
+                    score += QUEENS[index];
+                },
+                Piece::King => {
+                    if board.pieces(Piece::Pawn).bitand(board.color_combined(color)).popcnt() < 2 {
+                        score += KING_MIDDLE[index];
+                    }
+                },
+            }
+        }
+    }
+    score
 }
 
