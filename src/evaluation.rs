@@ -1,6 +1,6 @@
 use std::ops::BitAnd;
 
-use chess::{Board, Color, Piece, Square, ALL_SQUARES};
+use chess::{Board, Color, Piece, ALL_SQUARES};
 
 const PAWNS: [i32; 64] = [
                         0,  0,  0,  0,  0,  0,  0,  0,
@@ -63,11 +63,11 @@ const KING_MIDDLE: [i32; 64] = [
                             20, 30, 10,  0,  0, 10, 30, 20
                         ];
 
-const PAWN_VALUE: u32 = 100;
-const KNIGHT_VALUE: u32 = 320;
-const BISHOP_VALUE: u32 = 330;
-const ROOK_VALUE: u32 = 500;
-const QUEEN_VALUE: u32 = 900;
+pub const PAWN_VALUE: u32 = 100;
+pub const KNIGHT_VALUE: u32 = 320;
+pub const BISHOP_VALUE: u32 = 330;
+pub const ROOK_VALUE: u32 = 500;
+pub const QUEEN_VALUE: u32 = 900;
 
 const ENDGAME_MATERIAL_START: u32 = ROOK_VALUE * 2 + BISHOP_VALUE + KNIGHT_VALUE;
 
@@ -134,10 +134,8 @@ fn evaluate_tables(color: Color, board: &Board) -> i32 {
                     score += QUEENS[index];
                 },
                 Piece::King => {
-                    if board.pieces(Piece::Pawn).bitand(board.color_combined(color)).popcnt() < 2 {
-                        score += KING_MIDDLE[index];
-                    }
-                },
+                    score += KING_MIDDLE[index];
+                }
             }
         }
     }
