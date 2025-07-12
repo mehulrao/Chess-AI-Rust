@@ -23,6 +23,9 @@ pub enum EvalType {
 }
 const INVALID_MOVE: Option<ChessMove> = None;
 
+#[derive(Clone)]
+#[derive(Copy)]
+#[derive(PartialEq)]
 pub struct Searcher {
     use_second_search: bool,
     board: Board,
@@ -105,6 +108,7 @@ impl Searcher {
             let evaluation = -self.search_moves(depth - 1, ply_from_root + 1, -beta, -alpha, tt);
             self.board = board_backup;
             self.num_nodes += 1;
+            if self.abort_search {return 0}
             if evaluation >= beta {
                 self.store_eval(self.board.get_hash(), depth, ply_from_root, evaluation, EvalType::LowerBound, this_move, tt);
                 return beta;
@@ -139,17 +143,20 @@ impl Searcher {
             target_depth = usize::MAX;
         }
         for depth in 1..=target_depth {
+            self.best_move_this_iter = None;
+            self.best_eval_this_iter = NEG_INF;
             self.search_moves(depth as u8, 0, NEG_INF, POS_INF, tt);
-            if self.abort_search {
-                break;
-            } else {
-                current_iter_search_depth = depth;
-                println!("Current Depth: {} Num Posititon: {}", current_iter_search_depth, self.num_nodes);
+            current_iter_search_depth = depth;
+            println!("Current Depth: {} Num Posititon: {}", current_iter_search_depth, self.num_nodes);
+            if !self.best_move_this_iter.is_none() {
                 self.best_move = self.best_move_this_iter;
                 self.best_eval = self.best_eval_this_iter;
-                if self.is_mate_score(self.best_eval) {
-                    break;
-                }
+            }
+            if self.is_mate_score(self.best_eval) {
+                break;
+            }
+            if self.abort_search {
+                break;
             }
         }
     }

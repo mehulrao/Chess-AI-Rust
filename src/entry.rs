@@ -1,10 +1,7 @@
-use chess::{ChessMove, Square};
 use super::searcher::EvalType;
+use chess::{ChessMove, Square};
 
-#[derive(Clone)]
-#[derive(Copy)]
-#[derive(PartialEq)]
-#[derive(PartialOrd)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 
 pub struct Entry {
     pub value: i32,
@@ -13,7 +10,7 @@ pub struct Entry {
     pub node_type: EvalType,
 }
 
-impl Entry  {
+impl Entry {
     pub fn new(value: i32, move_: ChessMove, depth: u8, node_type: EvalType) -> Entry {
         Entry {
             value,

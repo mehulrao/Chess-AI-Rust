@@ -1,7 +1,6 @@
-use std::str::FromStr;
-use chess::{Color, Game, CacheTable, ChessMove};
+use chess::{CacheTable, ChessMove, Color, Game};
 mod searcher;
-use crate::{searcher::Searcher, entry::Entry};
+use crate::{entry::Entry, searcher::Searcher};
 mod entry;
 mod evaluation;
 mod move_ordering;
@@ -26,8 +25,7 @@ fn main() {
         if PLAYER == Color::Black {
             do_search(&mut game, &mut tt);
             user_move(&mut game);
-        }
-        else {
+        } else {
             loop {
                 user_move(&mut game);
                 do_search(&mut game, &mut tt);
@@ -41,31 +39,30 @@ fn user_move(game: &mut Game) {
         let mut move_text = String::new();
         println!("Enter your move: ");
         std::io::stdin().read_line(&mut move_text).unwrap();
-        if move_text == "O-O" {
+        if move_text.trim_end() == "O-O" {
             if PLAYER == Color::White {
                 move_text = String::from("e1g1");
-            }
-            else {
+            } else {
                 move_text = String::from("e8g8");
             }
         } else if move_text == "O-O-O" {
             if PLAYER == Color::White {
                 move_text = String::from("e1c1");
-            }
-            else {
+            } else {
                 move_text = String::from("e8c8");
             }
         }
-        let _move = match ChessMove::from_san(&game.current_position(), &move_text.trim().to_string()) {
-            Ok(m) => {
-                game.make_move(m);
-                break;
-            }
-            Err(_) => {
-                println!("Invalid Move: {}", move_text);
-                continue;
-            }
-        };
+        let _move =
+            match ChessMove::from_san(&game.current_position(), &move_text.trim().to_string()) {
+                Ok(m) => {
+                    game.make_move(m);
+                    break;
+                }
+                Err(_) => {
+                    println!("Invalid Move: {}", move_text);
+                    continue;
+                }
+            };
     }
     println!("--------------------------------");
     println!("{}", game.current_position());
@@ -74,7 +71,12 @@ fn user_move(game: &mut Game) {
 fn do_search(game: &mut Game, tt: &mut CacheTable<Entry>) {
     let mut searcher: Searcher = Searcher::new(game.current_position(), true);
     searcher.do_iterative_deepening_search(TARGET_DEPTH, tt);
-    println!("Best Move: {}{}", searcher.get_best_move().unwrap().get_source(), searcher.get_best_move().unwrap().get_dest());
+
+    println!(
+        "Best Move: {}{}",
+        searcher.get_best_move().unwrap().get_source(),
+        searcher.get_best_move().unwrap().get_dest()
+    );
     println!("Best Eval: {}", searcher.get_best_eval());
     println!("TT Hits: {}", searcher.get_num_tt());
     game.make_move(searcher.get_best_move().unwrap());
