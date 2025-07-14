@@ -64,7 +64,7 @@ impl SearchManager {
 
         let handle = thread::spawn(move || {
             // Create searcher with appropriate stop flag for infinite search
-            let mut searcher = if params.infinite {
+            let searcher = if params.infinite {
                 Searcher::new_with_stop_flag(board, use_second_search, is_searching.clone())
             } else {
                 Searcher::new(board, use_second_search)

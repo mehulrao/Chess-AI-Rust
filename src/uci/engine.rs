@@ -5,7 +5,7 @@ use crate::entry::Entry;
 use crate::uci::protocol::{GoParams, PositionParams};
 use crate::uci::search_manager::SearchManager;
 use crate::uci::utils::parse_uci_move;
-use chess::{Board, CacheTable, ChessMove, Game, MoveGen};
+use chess::{CacheTable, ChessMove, Game, MoveGen};
 
 pub struct EngineOptions {
     pub hash_size: usize,
