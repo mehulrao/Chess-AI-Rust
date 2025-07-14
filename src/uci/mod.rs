@@ -1,6 +1,8 @@
 pub mod commands;
 pub mod engine;
 pub mod protocol;
+pub mod search_manager;
+pub mod utils;
 
 use crate::uci::engine::UciEngine;
 use std::io::{self, BufRead, BufReader, Write};
