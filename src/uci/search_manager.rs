@@ -1,5 +1,6 @@
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -13,6 +14,7 @@ use chess::{Board, CacheTable, MoveGen};
 pub struct SearchManager {
     pub is_searching: Arc<AtomicBool>,
     pub search_handle: Option<thread::JoinHandle<()>>,
+    pub tt_receiver: Option<mpsc::Receiver<CacheTable<Entry>>>,
 }
 
 impl SearchManager {
@@ -20,6 +22,7 @@ impl SearchManager {
         Self {
             is_searching: Arc::new(AtomicBool::new(false)),
             search_handle: None,
+            tt_receiver: None,
         }
     }
 
@@ -27,7 +30,7 @@ impl SearchManager {
         &mut self,
         board: Board,
         params: GoParams,
-        hash_size: usize,
+        mut tt: CacheTable<Entry>,
         max_depth: u8,
         use_second_search: bool,
         debug_mode: bool,
@@ -52,8 +55,7 @@ impl SearchManager {
             io::stdout().flush().unwrap();
         }
 
-        // Create new transposition table for this search since we can't clone
-        let mut tt = CacheTable::new(hash_size, Entry::new_default());
+        // Use the provided transposition table instead of creating new one
         let is_searching = self.is_searching.clone();
 
         // Determine search parameters
@@ -61,6 +63,9 @@ impl SearchManager {
         let time_limit = calculate_time_limit(&params, &board);
 
         is_searching.store(true, Ordering::Relaxed);
+
+        let (tx, rx) = mpsc::channel();
+        self.tt_receiver = Some(rx);
 
         let handle = thread::spawn(move || {
             // Create searcher with appropriate stop flag for infinite search
@@ -72,15 +77,29 @@ impl SearchManager {
             let start_time = Instant::now();
 
             if params.infinite {
-                execute_infinite_search(searcher, &mut tt, start_time, is_searching.clone());
+                execute_infinite_search(
+                    searcher,
+                    &mut tt,
+                    start_time,
+                    is_searching.clone(),
+                    &params,
+                );
             } else if let Some(time_limit) = time_limit {
-                execute_time_based_search(searcher, &mut tt, start_time, time_limit, search_depth);
+                execute_time_based_search(
+                    searcher,
+                    &mut tt,
+                    start_time,
+                    time_limit,
+                    search_depth,
+                    &params,
+                );
             } else {
-                execute_depth_based_search(searcher, &mut tt, start_time, search_depth);
+                execute_depth_based_search(searcher, &mut tt, start_time, search_depth, &params);
             }
 
             io::stdout().flush().unwrap();
             is_searching.store(false, Ordering::Relaxed);
+            tx.send(tt).unwrap();
         });
 
         self.search_handle = Some(handle);
@@ -93,6 +112,14 @@ impl SearchManager {
             let _ = handle.join();
         }
     }
+
+    pub fn get_tt_after_search(&mut self) -> Option<CacheTable<Entry>> {
+        if let Some(receiver) = self.tt_receiver.take() {
+            receiver.try_recv().ok()
+        } else {
+            None
+        }
+    }
 }
 
 fn execute_infinite_search(
@@ -100,6 +127,7 @@ fn execute_infinite_search(
     tt: &mut CacheTable<Entry>,
     start_time: Instant,
     is_searching: Arc<AtomicBool>,
+    params: &GoParams,
 ) {
     // Use individual depth searches with proper UCI output
     for depth in 1..=50 {
@@ -107,11 +135,25 @@ fn execute_infinite_search(
             break;
         }
 
+        // Check node limit if specified
+        if let Some(node_limit) = params.nodes {
+            if searcher.get_num_nodes() as u64 >= node_limit {
+                break;
+            }
+        }
+
         // Search to this exact depth (this resets searcher each time but gives us proper depth results)
         searcher.do_iterative_deepening_search(depth, tt);
 
         if !is_searching.load(Ordering::Relaxed) {
             break;
+        }
+
+        // Check node limit again after search
+        if let Some(node_limit) = params.nodes {
+            if searcher.get_num_nodes() as u64 >= node_limit {
+                break;
+            }
         }
 
         // Output UCI info for this depth
@@ -138,6 +180,7 @@ fn execute_time_based_search(
     start_time: Instant,
     time_limit: Duration,
     search_depth: usize,
+    params: &GoParams,
 ) {
     println!(
         "info string Starting time-based search ({}ms allocated)",
@@ -161,12 +204,26 @@ fn execute_time_based_search(
             break;
         }
 
+        // Check node limit if specified
+        if let Some(node_limit) = params.nodes {
+            if searcher.get_num_nodes() as u64 >= node_limit {
+                break;
+            }
+        }
+
         // Search to this depth
         searcher.do_iterative_deepening_search(depth, tt);
 
         // Check time again after search
         if search_time_up.load(Ordering::Relaxed) || start_time.elapsed() >= time_limit {
             break;
+        }
+
+        // Check node limit again after search
+        if let Some(node_limit) = params.nodes {
+            if searcher.get_num_nodes() as u64 >= node_limit {
+                break;
+            }
         }
 
         // Output UCI info for this depth
@@ -198,17 +255,49 @@ fn execute_depth_based_search(
     tt: &mut CacheTable<Entry>,
     start_time: Instant,
     search_depth: usize,
+    params: &GoParams,
 ) {
-    println!(
-        "info string Starting depth-based search (depth {})",
-        search_depth
-    );
-    io::stdout().flush().unwrap();
+    // If mate parameter is specified, search for mate in N moves
+    if let Some(mate_in_n) = params.mate {
+        println!(
+            "info string Starting mate search (mate in {} moves)",
+            mate_in_n
+        );
+        io::stdout().flush().unwrap();
 
-    searcher.do_iterative_deepening_search(search_depth, tt);
+        // For mate search, we search progressively deeper up to mate_in_n * 2 plies
+        let max_mate_depth = (mate_in_n as usize) * 2;
+        for depth in 1..=max_mate_depth {
+            // Check node limit if specified
+            if let Some(node_limit) = params.nodes {
+                if searcher.get_num_nodes() as u64 >= node_limit {
+                    break;
+                }
+            }
 
-    if let Some(best_move) = searcher.get_best_move() {
-        output_search_info(search_depth, &searcher, tt, start_time, best_move);
+            searcher.do_iterative_deepening_search(depth, tt);
+
+            if let Some(best_move) = searcher.get_best_move() {
+                output_search_info(depth, &searcher, tt, start_time, best_move);
+
+                // Check if we found mate
+                if searcher.get_best_eval().abs() > (100000 - 1000) {
+                    break;
+                }
+            }
+        }
+    } else {
+        println!(
+            "info string Starting depth-based search (depth {})",
+            search_depth
+        );
+        io::stdout().flush().unwrap();
+
+        searcher.do_iterative_deepening_search(search_depth, tt);
+
+        if let Some(best_move) = searcher.get_best_move() {
+            output_search_info(search_depth, &searcher, tt, start_time, best_move);
+        }
     }
 
     output_final_bestmove(&searcher);

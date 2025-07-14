@@ -50,13 +50,11 @@ impl UciEngine {
             "option name Hash type spin default {} min 1 max 1024",
             self.options.hash_size / 1024 / 1024
         );
-        io::stdout().flush().unwrap();
 
         println!(
             "option name MaxDepth type spin default {} min 1 max 100",
             self.options.max_depth
         );
-        io::stdout().flush().unwrap();
 
         println!(
             "option name UseSecondSearch type check default {}",
@@ -126,6 +124,7 @@ impl UciEngine {
 
     fn handle_new_game(&mut self) {
         self.game = Game::new();
+        // Clear TT for new game (positions from previous game are not relevant)
         self.tt = CacheTable::new(self.options.hash_size, Entry::new_default());
     }
 
@@ -215,14 +214,23 @@ impl UciEngine {
     fn handle_go(&mut self, command: &str) {
         let params = GoParams::from_command(command);
 
-        // Stop any existing search
+        // Stop any existing search and retrieve TT if available
         self.handle_stop();
+        if let Some(updated_tt) = self.search_manager.get_tt_after_search() {
+            self.tt = updated_tt;
+        }
 
-        // Start new search
+        // Move our TT to the search manager (temporarily)
+        let tt_for_search = std::mem::replace(
+            &mut self.tt,
+            CacheTable::new(self.options.hash_size, Entry::new_default()),
+        );
+
+        // Start new search with our TT
         self.search_manager.start_search(
             self.game.current_position(),
             params,
-            self.options.hash_size,
+            tt_for_search,
             self.options.max_depth,
             self.options.use_second_search,
             self.debug_mode,
@@ -231,6 +239,11 @@ impl UciEngine {
 
     fn handle_stop(&mut self) {
         self.search_manager.stop_search();
+
+        // Retrieve TT back from search manager if available
+        if let Some(updated_tt) = self.search_manager.get_tt_after_search() {
+            self.tt = updated_tt;
+        }
     }
 
     fn handle_setoption(&mut self, command: &str) {
@@ -239,6 +252,7 @@ impl UciEngine {
                 "Hash" => {
                     if let Ok(hash_mb) = value.parse::<usize>() {
                         self.options.hash_size = hash_mb * 1024 * 1024;
+                        // Recreate TT with new size (this clears previous entries, which is correct)
                         self.tt = CacheTable::new(self.options.hash_size, Entry::new_default());
                     }
                 }
