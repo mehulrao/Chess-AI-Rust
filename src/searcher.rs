@@ -6,6 +6,8 @@ use chess::CacheTable;
 use chess::ChessMove;
 use chess::Color;
 use chess::MoveGen;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 const IMMEDIATE_MATE_SCORE: i32 = 100000;
 const POS_INF: i32 = 9999999;
@@ -20,7 +22,6 @@ pub enum EvalType {
 }
 const INVALID_MOVE: Option<ChessMove> = None;
 
-#[derive(Clone, Copy, PartialEq)]
 pub struct Searcher {
     use_second_search: bool,
     board: Board,
@@ -34,6 +35,7 @@ pub struct Searcher {
     best_eval: i32,
     best_move_this_iter: Option<ChessMove>,
     best_eval_this_iter: i32,
+    external_stop_flag: Option<Arc<AtomicBool>>,
 }
 
 impl Searcher {
@@ -51,6 +53,29 @@ impl Searcher {
             best_eval: 0,
             best_move_this_iter: None,
             best_eval_this_iter: 0,
+            external_stop_flag: None,
+        }
+    }
+
+    pub fn new_with_stop_flag(
+        board: Board,
+        use_second_search: bool,
+        stop_flag: Arc<AtomicBool>,
+    ) -> Searcher {
+        Searcher {
+            use_second_search,
+            board,
+            best_move: None,
+            num_nodes: 0,
+            num_pos: 0,
+            num_safe_pos: 0,
+            num_prunes: 0,
+            num_tt: 0,
+            abort_search: false,
+            best_eval: 0,
+            best_move_this_iter: None,
+            best_eval_this_iter: 0,
+            external_stop_flag: Some(stop_flag),
         }
     }
 
@@ -64,6 +89,14 @@ impl Searcher {
     ) -> i32 {
         if self.abort_search {
             return 0;
+        }
+
+        // Check external stop flag if available
+        if let Some(ref stop_flag) = self.external_stop_flag {
+            if !stop_flag.load(Ordering::Relaxed) {
+                self.abort_search = true;
+                return 0;
+            }
         }
         if ply_from_root > 0 {
             if self.board.status() == chess::BoardStatus::Stalemate {
